@@ -18,10 +18,10 @@ def Sub(q1, q2):
 def Multiply(q1, q2):                        
     q1w, q1x, q1y, q1z = q1[3], q1[0], q1[1], q1[2]
     q2w, q2x, q2y, q2z = q2[3], q2[0], q2[1], q2[2]
-    return ti.Vector([[q1w * q2x + q1x * q2w + q1y * q2z - q1z * q2y,
+    return ti.Vector([q1w * q2x + q1x * q2w + q1y * q2z - q1z * q2y,
                        q1w * q2y + q1y * q2w + q1z * q2x - q1x * q2z,
                        q1w * q2z + q1z * q2w + q1x * q2y - q1y * q2x,
-                       q1w * q2w - q1x * q2x - q1y * q2y - q1z * q2z]])
+                       q1w * q2w - q1x * q2x - q1y * q2y - q1z * q2z])
 
 
 @ti.func
