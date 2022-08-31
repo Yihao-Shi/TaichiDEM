@@ -1,4 +1,4 @@
-from __init__ import *
+import taichi as ti
 import DEM as DEM
 import TimeIntegrationDEM as TimeIntegrationDEM
 import math
