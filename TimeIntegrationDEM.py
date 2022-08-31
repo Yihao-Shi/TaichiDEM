@@ -33,13 +33,12 @@ def SolverEuler(dem, TIME, saveTime, CFL, vtkPath, ascPath, adaptive):
             Output(t, step, printNum, dem, st, vtkPath, ascPath)
             printNum += 1
         
-        EulerAlgorithm.UpdateQuaternion(dem)
+        EulerAlgorithm.UpdatePosition(dem)
         EulerAlgorithm.NeighborSearching(dem)
         EulerAlgorithm.ContactCal(dem)
         EulerAlgorithm.UpdateVelocity(dem)
-        EulerAlgorithm.UpdateAngularVelocity(dem)
-        EulerAlgorithm.UpdatePosition(dem)
-
+        EulerAlgorithm.UpdateAngularVelocity(dem, t)
+        
         if t % saveTime < dem.Dt[None]:
             Output(t, step, printNum, dem, st, vtkPath, ascPath)
             printNum += 1

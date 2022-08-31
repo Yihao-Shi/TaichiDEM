@@ -77,7 +77,7 @@ class DEM:
             "Modulus": float,                                                     # Shear Modulus
             "possion": float,                                                     # Possion ratio
             "Kn": float,                                                          # Hardening
-            "Kt": float,                                                          # Cohesion coefficient
+            "Ks": float,                                                          # Cohesion coefficient
             "Mu": float,                                                          # Angle of internal friction
             "Rmu": float,                                                         # Angle of dilatation
             "cohesion": float,                                                    # Bond cohesion

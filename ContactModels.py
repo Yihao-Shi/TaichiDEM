@@ -15,80 +15,63 @@ class DEMContact:
         self.gapn = ti.field(float, shape=(max_contact_num,))
         self.cnforce = ti.Vector.field(3, float, shape=(max_contact_num,))
         self.ctforce = ti.Vector.field(3, float, shape=(max_contact_num,))
-        self.Tr = ti.Vector.field(3, float, shape=(max_contact_num,))
-        self.Tt = ti.Vector.field(3, float, shape=(max_contact_num,))
         self.v_rel = ti.Vector.field(3, float, shape=(max_contact_num,))
-        self.vr_rel = ti.Vector.field(3, float, shape=(max_contact_num,))
-        self.vt_rel = ti.field(float, shape=(max_contact_num,))
         self.norm = ti.Vector.field(3, float, shape=(max_contact_num,))
 
         self.kn = ti.field(float, shape=(max_contact_num,))
-        self.ks = ti.field(float, shape=(max_contact_num,))
+        self.kt = ti.field(float, shape=(max_contact_num,))
         self.Miu = ti.field(float, shape=(max_contact_num,))
-        self.Rmiu = ti.field(float, shape=(max_contact_num,))
-        self.Tmiu = ti.field(float, shape=(max_contact_num,))
+        self.Rmu = ti.field(float, shape=(max_contact_num,))
 
         self.contactNum0, self.contactNum = ti.field(int, shape=()), ti.field(int, shape=())
-        self.RelTranslate = ti.Struct.field({                                      # List of relative displacement 
+        self.RelTangDisp0 = ti.Struct.field({                                     # List of relative displacement at previous timestep
             "key": int,                                                            # Hash Index
-            "ft": ti.types.vector(3, float)                                        # Trial tangential force
+            "ft": ti.types.vector(3, float),                                       # Trial tangential force
         }, shape=(max_contact_num,))
-        self.RelRolling = ti.Struct.field({                                         # List of relative displacement 
+        self.RelTangDisp = ti.Struct.field({                                      # List of relative displacement 
             "key": int,                                                            # Hash Index
-            "frt": ti.types.vector(3, float),                                       # Trial tangential force
+            "ft": ti.types.vector(3, float),                                       # Trial tangential force
         }, shape=(max_contact_num,))
-        self.RelTwist = ti.Struct.field({                                         # List of relative displacement 
-            "key": int,                                                            # Hash Index
-            "ftt": ti.types.vector(3, float),                                       # Trial tangential force
-        }, shape=(max_contact_num,))
-
-    @ti.func
-    def PairingFunc(self, i, j):
-        return int((i + j) * (i + j + 1) / 2. + j)
 
     @ti.kernel
     def ResetContactList(self):
         for nc in range(self.contactNum[None]):
             self.endID1[nc] = 0
             self.endID2[nc] = 0
-            self.isw2p[nc] = 0
             self.m_eff[nc] = 0.
             self.gapn[nc] = 0.
-            self.cnforce[nc] = ti.Matrix.zero(float, 3)
-            self.ctforce[nc] = ti.Matrix.zero(float, 3)
-            self.Tr[nc] = ti.Matrix.zero(float, 3)
-            self.Tt[nc] = ti.Matrix.zero(float, 3)
-            self.v_rel[nc] = ti.Matrix.zero(float, 3)
-            self.vr_rel[nc] = ti.Matrix.zero(float, 3)
-            self.vt_rel[nc] = 0.
-            self.norm[nc] = ti.Matrix.zero(float, 3)
-            self.cpos[nc] = ti.Matrix.zero(float, 3)
+            self.cnforce[nc] = ti.Vector([0., 0., 0.])
+            self.ctforce[nc] = ti.Vector([0., 0., 0.])
+            self.cdnforce[nc] = ti.Vector([0., 0., 0.])
+            self.cdtforce[nc] = ti.Vector([0., 0., 0.])
+            self.v_rel[nc] = ti.Vector([0., 0., 0.])
+            self.norm[nc] = ti.Vector([0., 0., 0.])
+            self.cpos[nc] = ti.Vector([0., 0., 0.])
 
             self.kn[nc] = 0.
-            self.ks[nc] = 0.
+            self.kt[nc] = 0.
             self.Miu[nc] = 0.
-            self.Rmiu[nc] = 0.
-            self.Tmiu[nc] = 0.
+            self.Rmu[nc] = 0.
         
     @ti.kernel
     def ResetFtIntegration(self):
-        for nc in range(self.contactNum0[None], self.contactNum[None]):
-            self.RelTranslate[nc].key = -1
-            self.RelTranslate[nc].ft = ti.Matrix.zero(float, 3)
+        for nc in self.RelTangDisp:
+            self.RelTangDisp0[nc].key = self.RelTangDisp[nc].key
+            self.RelTangDisp0[nc].ft = self.RelTangDisp[nc].ft
 
-        for nc in range(self.contactNum[None]):
-            self.RelTranslate[nc].key = self.PairingFunc(self.endID1[nc], self.endID2[nc])
-            self.RelTranslate[nc].ft = self.ctforce[nc]
+        for nc in self.RelTangDisp:
+            self.RelTangDisp[nc].key = -1
+            self.RelTangDisp[nc].ft = ti.Vector([0., 0., 0.])
         self.contactNum0[None] = self.contactNum[None]
 
     @ti.func
     def LinearModelParas(self, nc, end1, end2, matID1, matID2, matList):
         Miu1, Miu2 = matList.Mu[matID1], matList.Mu[matID2]
-        kn1, kn2, kt1, kt2 = matList.kn[matID1], matList.kn[matID2], matList.ks[matID2], matList.ks[matID2]
+        kn1, kn2, kt1, kt2 = matList.kn[matID1], matList.kn[matID2], matList.kt[matID2], matList.kt[matID2]
         vdn1, vdn2, vdt1, vdt2 = matList.NormalViscousDamping[matID1], matList.TangViscousDamping[matID2], matList.NormalViscousDamping[matID2], matList.TangViscousDamping[matID2]
 
         self.kn[nc] = EffectiveValue(kn1, kn2)
-        self.ks[nc] = EffectiveValue(kt1, kt2)
+        self.kt[nc] = EffectiveValue(kt1, kt2)
         self.Miu[nc] = ti.min(Miu1, Miu2)
 
     @ti.func
@@ -101,28 +84,28 @@ class DEMContact:
         possion_eff = 0.5 * (possion1 + possion2)
     
         self.kn[nc] = (2 * modulus_eff * ti.sqrt(2 * self.rad_eff[nc])) / (3 * (1 - possion_eff))
-        self.ks[nc] = (2 * modulus_eff ** 2 * 3 * (1 - possion_eff))
+        self.kt[nc] = (2 * modulus_eff ** 2 * 3 * (1 - possion_eff))
         self.Miu[nc] = ti.min(Miu1, Miu2)
 
     @ti.func
     def LinearRollingModelParas(self, nc, end1, end2, matID1, matID2, matList):
-        Miu1, Miu2, Rmu1, Rmu2 = matList.Mu[matID1], matList.Mu[matID2], matList.Rmiu[matID1], matList.Rmiu[matID2]
-        kn1, kn2, kt1, kt2 = matList.kn[matID1], matList.kn[matID2], matList.ks[matID2], matList.ks[matID2]
+        Miu1, Miu2, Rmu1, Rmu2 = matList.Mu[matID1], matList.Mu[matID2], matList.Rmu[matID1], matList.Rmu[matID2]
+        kn1, kn2, kt1, kt2 = matList.kn[matID1], matList.kn[matID2], matList.kt[matID2], matList.kt[matID2]
         vdn1, vdn2, vdt1, vdt2 = matList.NormalViscousDamping[matID1], matList.TangViscousDamping[matID2], matList.NormalViscousDamping[matID2], matList.TangViscousDamping[matID2]
 
         self.kn[nc] = EffectiveValue(kn1, kn2)
-        self.ks[nc] = EffectiveValue(kt1, kt2)
+        self.kt[nc] = EffectiveValue(kt1, kt2)
         self.Miu[nc] = ti.min(Miu1, Miu2)
-        self.Rmiu[nc] = ti.min(Rmu1, Rmu2)
+        self.Rmu[nc] = ti.min(Rmu1, Rmu2)
 
     @ti.func
     def LinearBondModelParas(self, nc, end1, end2, matID1, matID2, matList):
         Miu1, Miu2 = matList.Mu[matID1], matList.Mu[matID2]
-        kn1, kn2, kt1, kt2 = matList.kn[matID1], matList.kn[matID2], matList.ks[matID2], matList.ks[matID2]
+        kn1, kn2, kt1, kt2 = matList.kn[matID1], matList.kn[matID2], matList.kt[matID2], matList.kt[matID2]
         vdn1, vdn2, vdt1, vdt2 = matList.NormalViscousDamping[matID1], matList.TangViscousDamping[matID2], matList.NormalViscousDamping[matID2], matList.TangViscousDamping[matID2]
   
         self.kn[nc] = EffectiveValue(kn1, kn2)
-        self.ks[nc] = EffectiveValue(kt1, kt2)
+        self.kt[nc] = EffectiveValue(kt1, kt2)
         self.Miu[nc] = ti.min(Miu1, Miu2)
 
     @ti.kernel
@@ -150,11 +133,8 @@ class DEMContact:
             self.norm[nc] = (pos1 - pos2).normalized()
             self.cpos[nc] = pos1
             self.v_rel[nc] = vel1 + w1.cross(self.cpos[nc] - pos1) - (vel2 + w2.cross(self.cpos[nc] - pos2))
-            self.vr_rel[nc] = -self.rad_eff[nc] * (w1 - w2).cross(self.norm[nc])
-            self.vt_rel[nc] = (w1 - w2).dot(self.norm[nc])
 
         for nc in range(neighborList.contact_P2W_num[None], neighborList.contact_pair_num[None]): 
-
             end1, end2 = int(neighborList.contactPair[nc, 0]), int(neighborList.contactPair[nc, 1])
             matID1, matID2 = partList.materialID[end1], partList.materialID[end2]
             pos1, pos2 = neighborList.contactPos[nc, 0], neighborList.contactPos[nc, 1]
@@ -174,60 +154,45 @@ class DEMContact:
             self.norm[nc] = (pos1 - pos2).normalized()
             self.cpos[nc] = pos1 + (rad1 - 0.5 * self.gapn[nc]) * self.norm[nc]
             self.v_rel[nc] = vel1 + w1.cross(self.cpos[nc] - pos1) - (vel2 + w2.cross(self.cpos[nc] - pos2))
-            vt = self.v_rel[nc] - self.v_rel[nc].dot(self.norm[nc]) * self.norm[nc]  
-            self.vr_rel[nc] = -self.rad_eff[nc] * (w1 - w2).cross(self.norm[nc]) - 0.5 * ((rad2 - rad1) + (rad2 + rad1)) * vt
-            self.vt_rel[nc] = (w1 - w2).dot(self.norm[nc])
+    
+    @ti.func
+    def PairingFunc(self, i, j):
+        return ((i + j) * (i + j + 1) / 2. + j)
 
     @ti.func
     def Friction(self, nc, dt, partList):
         vt = self.v_rel[nc] - self.v_rel[nc].dot(self.norm[nc]) * self.norm[nc]  
-        trial_ft = -self.ks[nc] * vt * dt 
-        key  = self.PairingFunc(self.isw2p[nc] * partList.particleNum[None] + self.endID1[nc], self.endID2[nc])
+        dxc0 = vt * dt
+        trial_ft = -self.kt[nc] * dxc0 
+        key  = int(self.PairingFunc(self.isw2p[nc] * partList.particleNum[None] + self.endID1[nc], self.endID2[nc]))
         for i in range(self.contactNum0[None]):
-            if self.RelTranslate[i].key == key:
-                ft_pre = self.RelTranslate[i].ft - self.RelTranslate[i].ft.dot(self.norm[nc]) * self.norm[nc]
-                ft_temp = self.RelTranslate[i].ft.norm() * Normalize(ft_pre)
+            if self.RelTangDisp0[i].key == key:
+                ft_pre = self.RelTangDisp0[i].ft - self.RelTangDisp0[i].ft.dot(self.norm[nc]) * self.norm[nc]
+                ft_temp = self.RelTangDisp0[i].ft.norm() * ft_pre.normalized()
                 trial_ft = trial_ft + ft_temp
 
         fric = self.Miu[nc] * self.cnforce[nc].norm()
         if trial_ft.norm() > fric:
-            self.ctforce[nc] = fric * trial_ft.normalized()
+            t = trial_ft.normalized()
+            self.ctforce[nc] = fric * t
         else:
             self.ctforce[nc] = trial_ft
+        self.RelTangDisp[nc].ft = self.ctforce[nc]
 
     @ti.func
     def RollingFriction(self, nc, dt, partList, wallList):
-        vrt = self.vr_rel[nc] - self.vr_rel[nc].dot(self.norm[nc]) * self.norm[nc]  
-        trial_frt = -self.kr[nc] * vrt * dt 
-        key  = self.PairingFunc(self.isw2p[nc] * partList.particleNum[None] + self.endID1[nc], self.endID2[nc])
-        for i in range(self.contactNum0[None]):
-            if self.RelRolling[i].key == key:
-                frt_pre = self.RelRolling[i].frt - self.RelRolling[i].frt.dot(self.norm[nc]) * self.norm[nc]
-                frt_temp = self.RelRolling[i].frt.norm() * Normalize(frt_pre)
-                trial_frt = trial_frt + frt_temp
-
-        fricRoll = self.Rmiu[nc] * self.cnforce[nc].norm()
-        if trial_frt.norm() > fricRoll:
-            self.Tr[nc] = fricRoll * trial_frt.normalized()
-        else:
-            self.Tr[nc] = trial_frt
+        w1, w2 = 0., 0.
+        end1, end2 = self.endID1[nc], self.endID2[nc]
+        if self.isw2p[nc] == 1:
+            w1, w2 = wallList.w[end1], partList.w[end2]
+        elif self.isw2p[nc] == 0:
+            w1, w2 = partList.w[end1], partList.w[end2]
+        vij = self.rad_eff[nc] * (self.norm[nc].cross(w2) - self.norm[nc].cross(w1))
+        vt = vij - vij.dot(self.norm[nc]) * self.norm[nc]
 
     @ti.func
     def TorsionFriction(self, nc, dt, partList, wallList):
-        vtt = self.vt_rel[nc] - self.vt_rel[nc].dot(self.norm[nc]) * self.norm[nc]  
-        trial_ftt = -self.kt[nc] * vtt * dt 
-        key  = self.PairingFunc(self.isw2p[nc] * partList.particleNum[None] + self.endID1[nc], self.endID2[nc])
-        for i in range(self.contactNum0[None]):
-            if self.RelTwist[i].key == key:
-                ftt_pre = self.RelTwist[i].ftt - self.RelTwist[i].ftt.dot(self.norm[nc]) * self.norm[nc]
-                ftt_temp = self.RelTwist[i].ftt.norm() * Normalize(ftt_pre)
-                trial_ftt = trial_ftt + ft_ttemp
-
-        fricTwist = self.Tmiu[nc] * self.cnforce[nc].norm()
-        if trial_ftt.norm() > fricTwist:
-            self.Tt[nc] = fricTwist * trial_ftt.normalized()
-        else:
-            self.Tt[nc] = trial_ftt
+        pass
 
     @ti.func
     def NormalForce(self, nc):
@@ -241,18 +206,16 @@ class DEMContact:
                 end1, end2 = self.endID1[nc], self.endID2[nc]
                 self.NormalForce(nc)
                 self.Friction(nc, dem.Dt[None], partList)
-                Ftotal = self.cnforce[nc] + self.ctforce[nc]
-                Ttotal = self.Tr[nc] + self.Tt[nc]
-                #print(nc, self.endID1[nc], self.endID2[nc], self.norm[nc], self.cnforce[nc], self.ctforce[nc])
+                totalf = self.cnforce[nc] + self.ctforce[nc]
                 if self.isw2p[nc] == 1:
                     center = (wallList.p1[end1] + wallList.p2[end1] + wallList.p3[end1] + wallList.p4[end1]) / 4.
-                    wallList.Fc[end1] += Ftotal
-                    wallList.Tc[end1] += Ftotal.cross(center - self.cpos[nc]) + Ttotal
+                    ti.atomic_add(wallList.Fc[end1], totalf)
+                    ti.atomic_add(wallList.Tc[end1], totalf.cross(center - self.cpos[nc])) ## Transform from world frame to object frame!!!!!!!!!!!
                 elif self.isw2p[nc] == 0:
-                    partList.Fc[end1] += Ftotal
-                    partList.Tc[end1] += Ftotal.cross(partList.x[end1] - self.cpos[nc]) + Ttotal
-                partList.Fc[end2] -= Ftotal
-                partList.Tc[end2] -= Ftotal.cross(partList.x[end2] - self.cpos[nc]) + Ttotal
+                    ti.atomic_add(partList.Fc[end1], totalf)
+                    ti.atomic_add(partList.Tc[end1], totalf.cross(partList.x[end1] - self.cpos[nc]))
+                ti.atomic_sub(partList.Fc[end2], totalf)
+                ti.atomic_sub(partList.Tc[end2],  totalf.cross(partList.x[end2] - self.cpos[nc]))
 
     @ti.kernel
     def HertzModel(self):

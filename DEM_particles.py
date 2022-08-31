@@ -1,7 +1,6 @@
 import taichi as ti
 import Quaternion as Quaternion
-import numpy 
-import math
+import numpy, math, random
 
 
 @ti.data_oriented
@@ -20,17 +19,15 @@ class DEMParticle:
 
         self.x = ti.Vector.field(3, float, max_particle_num)
         self.v = ti.Vector.field(3, float, max_particle_num)
-        self.vi = ti.Vector.field(3, float, max_particle_num)
         self.av = ti.Vector.field(3, float, max_particle_num)
         self.Fex = ti.Vector.field(3, float, max_particle_num)
         self.Fc = ti.Vector.field(3, float, max_particle_num)
         self.Fd = ti.Vector.field(3, float, max_particle_num)
         self.fixedV = ti.Vector.field(3, int, max_particle_num)
         self.q = ti.Vector.field(4, float, max_particle_num)
-        self.q0 = ti.Vector.field(4, float, max_particle_num)
         self.rotate = ti.Matrix.field(3, 3, float, max_particle_num)
+        self.Am = ti.Vector.field(3, float, max_particle_num)
         self.w = ti.Vector.field(3, float, max_particle_num)
-        self.wi = ti.Vector.field(3, float, max_particle_num)
         self.inv_I = ti.Matrix.field(3, 3, float, max_particle_num)
         self.Td = ti.Vector.field(3, float, max_particle_num)
         self.Tc = ti.Vector.field(3, float, max_particle_num)
@@ -42,7 +39,7 @@ class DEMParticle:
     @ti.func
     def OrientationInit(self, np, norm):
         self.q[np] = Quaternion.SetFromTwoVec(ti.Vector([0., 0., 1.]), norm)
-        self.q[np] = Quaternion.Normalized(self.q[np])
+        self.rotate[np] = Quaternion.SetToRotate(self.q[np])
 
     @ti.func
     def SphereParas(self, np, rad, pos, rho):
@@ -63,8 +60,6 @@ class DEMParticle:
         self.w[np] = w0
         self.av[np] = fex / self.m[np] + grav
         self.aw[np] = self.inv_I[np] @ tex 
-        self.vi[np] = v0 + 0.5 * dt * self.av[np]
-        self.wi[np] = w0 + 0.5 * dt * self.aw[np]
         self.fixedV[np] = fixedV
         self.fixedW[np] = fixedW
 
@@ -105,6 +100,7 @@ class DEMParticle:
         w0 = BodyInfo[nb].w0
         fixedV = BodyInfo[nb].fixedV
         fixedW = BodyInfo[nb].fixedW
+        
         self.SphereParas(self.particleNum[None], rad, pos, matList.rho[MatID])
         self.DEMParticleInit(self.particleNum[None], nb, shapeType, MatID, fex, tex, v0, w0, fixedV, fixedW, grav, dt)
         self.OrientationInit(self.particleNum[None], norm)
@@ -148,9 +144,11 @@ class DEMParticle:
             source_x = self.x[self.particleNum[None] + head]
             source_rad = self.rad[self.particleNum[None] + head]
             head += 1
-            for _ in range(100):
+            for _ in range(1000):
                 radius = BodyInfo[nb].rlo + ti.random() * (BodyInfo[nb].rhi - BodyInfo[nb].rlo)
-                randvector = ti.Vector([ti.random(), ti.random(), ti.random()])
+                u, v = ti.random(), ti.random()
+                theta, phi = 2 * math.pi * u, ti.acos(2 * v - 1)
+                randvector = ti.Vector([ti.sin(theta) * ti.sin(phi), ti.cos(theta) * ti.sin(phi), ti.cos(phi)])
                 offset = randvector.normalized() * ((1 + ti.random()) * radius + source_rad)
                 new_x = source_x + offset
 

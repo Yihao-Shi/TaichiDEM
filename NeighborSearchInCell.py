@@ -1,13 +1,17 @@
 import taichi as ti
+import math
 
 
 @ti.data_oriented
 class NeighborSearchInCell:
     def __init__(self, domain, gridsize, max_contact_num, max_particle_num, max_wall_num, max_particle_in_cell):
-        self.gridR = gridsize
-        self.cnum = ti.Vector([int(domain[0] / self.gridR), int(domain[1] / self.gridR), int(domain[2] / self.gridR)])              # Grid Number
+        self.gridsize = gridsize
+        self.cnum = ti.Vector([math.ceil(domain[0] / self.gridsize), int(domain[1] / self.gridsize), int(domain[2] / self.gridsize)])              # Grid Number
         self.cellSum = self.cnum[0] * self.cnum[1] * self.cnum[2]
-        self.max_particle_num = max_particle_num
+        if self.cnum[2] == 0:
+            self.cellSum = self.cnum[0] * self.cnum[1]
+            if self.cnum[1] == 0:
+                self.cellSum = self.cnum[0]
 
         self.id = ti.field(int, self.cellSum)                                                                        # ID of grids
         self.x = ti.Vector.field(3, float, self.cellSum)                                                             # Position
@@ -21,7 +25,7 @@ class NeighborSearchInCell:
         self.target_cell[0], self.target_cell[1], self.target_cell[2] = ti.Vector([0, 0, -1]), ti.Vector([-1, 0, -1]), ti.Vector([-1, 0, 0])
         self.target_cell[3], self.target_cell[4], self.target_cell[5] = ti.Vector([-1, 0, 1]), ti.Vector([0, -1, -1]), ti.Vector([0, -1, 0])
         self.target_cell[6], self.target_cell[7], self.target_cell[8] = ti.Vector([0, -1, 1]), ti.Vector([-1, -1, -1]), ti.Vector([-1, -1, 0])
-        self.target_cell[9], self.target_cell[10], self.target_cell[11], self.target_cell[12]= ti.Vector([-1, -1, 1]), ti.Vector([1, -1, -1]), ti.Vector([1, -1, 0]), ti.Vector([1, -1, -1])
+        self.target_cell[9], self.target_cell[10], self.target_cell[11], self.target_cell[12]= ti.Vector([-1, -1, 1]), ti.Vector([1, -1, -1]), ti.Vector([1, -1, 0]), ti.Vector([1, -1, 1])
 
         # ==================================================== Wall ============================================================ #
         self.wallCenter = ti.Vector.field(3, float, max_wall_num)
@@ -50,7 +54,7 @@ class NeighborSearchInCell:
     def CellInit(self):
         for nc in self.id:
             ig, jg, kg = self.GetCellIndex(nc)
-            pos = (ti.Vector([ig, jg, kg]) + 0.5) * self.gridR
+            pos = (ti.Vector([ig, jg, kg]) + 0.5) * self.gridsize
             self.id[nc] = nc
             self.x[nc] = pos
 
@@ -74,7 +78,7 @@ class NeighborSearchInCell:
     @ti.kernel
     def InsertParticle(self, partList: ti.template()):
         for np in range(partList.particleNum[None]):
-            cellID = self.GetCellID(partList.x[np] // self.gridR)
+            cellID = self.GetCellID(partList.x[np] // self.gridsize)
             partList.cellID[np] = cellID
             temp = ti.atomic_add(self.ParticleInCellNum[cellID], 1)
             self.ParticleNeighbor[cellID, temp] = np
@@ -113,7 +117,23 @@ class NeighborSearchInCell:
         partList, matList, contList = dem.lp, dem.lm, dem.lc
         for cellID in range(self.cellSum):
             if self.ParticleInCellNum[cellID] > 0:
-                self.UpdateProximityP2P(cellID, partList)
+                for first in range(self.ParticleInCellNum[cellID]):
+                    master = self.ParticleNeighbor[cellID, first]
+                    if self.ParticleInCellNum[cellID] > 1:
+                        for npc in range(first + 1, self.ParticleInCellNum[cellID]):
+                            slave = self.ParticleNeighbor[cellID, npc]
+                            pos1, rad1 = partList.x[master], partList.rad[master]
+                            pos2, rad2 = partList.x[slave], partList.rad[slave]
+                            self.FineSearchP2P(master, slave, pos1, pos2, rad1, rad2)
+                        
+                    for cell in ti.static(range(self.target_cell.shape[0])):
+                        currCellID = cellID + self.GetCellID(self.target_cell[cell])
+                        if 0 <= currCellID <= self.cellSum and currCellID != cellID:
+                            for npnc in range(self.ParticleInCellNum[currCellID]):
+                                neighSlave = self.ParticleNeighbor[currCellID, npnc]
+                                pos1, rad1 = partList.x[master], partList.rad[master]
+                                pos2, rad2 = partList.x[neighSlave], partList.rad[neighSlave]
+                                self.FineSearchP2P(master, neighSlave, pos1, pos2, rad1, rad2)
     
     # ============================================ Wall ================================================= #
     @ti.kernel
@@ -172,7 +192,9 @@ class NeighborSearchInCell:
         for cellID in range(self.cellSum):
             for nw in range(wallList.wallNum[None]):
                 P = self.FindWallCenter(wallList, nw)
-                if self.PointToFacetDis(self.x[cellID], P, wallList.norm[nw]) < 0.87 * self.gridR:
+                dist = self.PointToFacetDis(self.x[cellID], P, wallList.norm[nw])
+                xc = self.PointProjection(self.x[cellID], dist, wallList.norm[nw])
+                if dist < 0.707 * self.gridsize and self.IsInPlane(wallList.p1[nw], wallList.p2[nw], wallList.p3[nw], wallList.p4[nw], xc):
                     temp = ti.atomic_add(self.WallInCellNum[cellID], 1)
                     self.WallNeighbor[cellID, temp] = nw
         
@@ -180,7 +202,17 @@ class NeighborSearchInCell:
     def FineSearchP2W(self, end1, end2, wallList, partList):
         P = self.FindWallCenter(wallList, end1)
         dist = self.PointToFacetDis(partList.x[end2], P, wallList.norm[end1])
-        if 0 < dist < partList.rad[end2]:
+        if wallList.isactive[end1] == 1:
+            if 0 < dist < partList.rad[end2]:
+                xc = self.PointProjection(partList.x[end2], dist, wallList.norm[end1])
+                if self.IsInPlane(wallList.p1[end1], wallList.p2[end1], wallList.p3[end1], wallList.p4[end1], xc):
+                    temp = ti.atomic_add(self.contact_P2W_num[None], 1)
+                    self.contactPair[temp, 0] = end1
+                    self.contactPair[temp, 1] = end2
+                    self.contactPos[temp, 0] = xc
+                    self.contactPos[temp, 1] = partList.x[end2]
+            #elif dist < 0.: print("!! Particle is loacted in inactive side\n")
+        elif wallList.isactive[end1] == 2:
             xc = self.PointProjection(partList.x[end2], dist, wallList.norm[end1])
             if self.IsInPlane(wallList.p1[end1], wallList.p2[end1], wallList.p3[end1], wallList.p4[end1], xc):
                 temp = ti.atomic_add(self.contact_P2W_num[None], 1)
@@ -188,20 +220,34 @@ class NeighborSearchInCell:
                 self.contactPair[temp, 1] = end2
                 self.contactPos[temp, 0] = xc
                 self.contactPos[temp, 1] = partList.x[end2]
-        elif dist < 0.: print("!! Particle is loacted in inactive side\n")
 
     @ti.func
     def UpdateProximityP2W(self, cellID, partList, wallList):
-        for first in range(self.WallInCellNum[cellID]):
-            end1 = self.WallNeighbor[cellID, first]
-            for npc in range(self.ParticleInCellNum[cellID]):
-                end2 = self.ParticleNeighbor[cellID, npc]
-                self.FineSearchP2W(end1, end2, wallList, partList)
+        for first in range(self.ParticleInCellNum[cellID]):
+            end2 = self.ParticleNeighbor[cellID, first]
+            for npw in range(self.WallInCellNum[cellID]):
+                end1 = self.WallNeighbor[cellID, npw]
+                if wallList.isactive[end1] >= 1:
+                    self.FineSearchP2W(end1, end2, wallList, partList)
+
+            for cell in ti.static(range(self.target_cell.shape[0])):
+                currCellID = cellID + self.GetCellID(self.target_cell[cell])
+                if 0 <= currCellID <= self.cellSum:
+                    for npnw in range(self.WallInCellNum[currCellID]):
+                        neighend1 = self.ParticleNeighbor[currCellID, npnw]
+                        if wallList.isactive[neighend1] >= 1:
+                            self.FineSearchP2W(neighend1, end2, wallList, partList)
 
     @ti.kernel
     def FindNeighborP2W(self, dem: ti.template()):
         partList, wallList, matList, contList = dem.lp, dem.lw, dem.lm, dem.lc
+        for np in range(partList.particleNum[None]):
+            for nw in range(wallList.wallNum[None]):
+                if wallList.isactive[nw] == 1:
+                    self.FineSearchP2W(nw, np, wallList, partList)
+        self.contact_pair_num[None] = self.contact_P2W_num[None]
+        '''partList, wallList, matList, contList = dem.lp, dem.lw, dem.lm, dem.lc
         for cellID in range(self.cellSum):
             if self.WallInCellNum[cellID] > 0 and self.ParticleInCellNum[cellID] > 0:
                 self.UpdateProximityP2W(cellID, partList, wallList)
-        self.contact_pair_num[None] = self.contact_P2W_num[None]
+        self.contact_pair_num[None] = self.contact_P2W_num[None]'''

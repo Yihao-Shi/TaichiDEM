@@ -51,9 +51,9 @@ def Normalized(q):
 @ti.func
 def SetToRotate(q):
     qw, qx, qy, qz = q[3], q[0], q[1], q[2]
-    return ti.Matrix([[2 * (qw * qw + qx * qx) - 1, 2 * (qx * qy + qz * qw), 2 * (qx * qz + qy * qw)], 
-                      [2 * (qx * qy + qz * qw), 2 * (qw * qw + qy * qy) - 1, 2 * (qy * qz - qx * qw)], 
-                      [2 * (qx * qz - qy * qw), 2 * (qy * qz + qx * qw), 2 * (qw * qw + qz * qz) - 1]])
+    return ti.Matrix([[1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy + qz * qw), 2 * (qx * qz - qy * qw)], 
+                      [2 * (qx * qy - qz * qw), 1 - 2 * (qx * qx + qz * qz), 2 * (qy * qz + qx * qw)], 
+                      [2 * (qx * qz + qy * qw), 2 * (qy * qz - qx * qw), 1 - 2 * (qx * qx + qy * qy)]])
 
 
 @ti.func
@@ -99,9 +99,9 @@ def Radians(q):
 def SetDQ(q, omega):
     qw, qx, qy, qz = q[3], q[0], q[1], q[2]
     ox, oy, oz = omega[0], omega[1], omega[2]
-    return 0.5 * ti.Vector([ox * qw + oy * qz - oz * qy,
-                            oy * qw + oz * qx - ox * qz,
-                            oz * qw + ox * qy - oy * qx,
+    return 0.5 * ti.Vector([ox * qw - oy * qz + oz * qy,
+                            oy * qw - oz * qx + ox * qz,
+                            oz * qw - ox * qy + oy * qx,
                             -ox * qx - oy * qy - oz * qz])
 
 
@@ -182,4 +182,4 @@ def SetFromTwoVec(vec1, vec2):
         angle = 0.
         axis = ti.Vector([1., 0., 0.])
 
-    return SetFromAxisAngle(axis.normalized(), angle);
+    return SetFromAxisAngle(axis.normalized(), angle)

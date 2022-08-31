@@ -14,7 +14,7 @@ class DEMMaterial:
         self.modulus = ti.field(float, shape=(max_material_num,))
         self.possion = ti.field(float, shape=(max_material_num,))
         self.kn = ti.field(float, shape=(max_material_num,))
-        self.kt = ti.field(float, shape=(max_material_num,))
+        self.ks = ti.field(float, shape=(max_material_num,))
         self.Mu = ti.field(float, shape=(max_material_num,))
         self.Rmu = ti.field(float, shape=(max_material_num,))
 
@@ -22,7 +22,7 @@ class DEMMaterial:
     def ParticleLinearInit(self, matID: int, MatInfo: ti.template()):
         print('Contact model: Linear contact Model')
         print('Contact normal stiffness: = ', MatInfo[matID].Kn)
-        print('Contact tangential stiffness: = ', MatInfo[matID].Kt)
+        print('Contact tangential stiffness: = ', MatInfo[matID].Ks)
         print('Friction coefficient = ', MatInfo[matID].Mu)
         print('Local damping coefficient = ', MatInfo[matID].ForceLocalDamping)
         print('Local damping coefficient = ', MatInfo[matID].TorqueLocalDamping)
@@ -36,7 +36,7 @@ class DEMMaterial:
         self.NormalViscousDamping[matID] = MatInfo[matID].NormalViscousDamping
         self.TangViscousDamping[matID] = MatInfo[matID].TangViscousDamping
         self.kn[matID] = MatInfo[matID].Kn
-        self.kt[matID] = MatInfo[matID].Kt
+        self.ks[matID] = MatInfo[matID].Ks
         self.Mu[matID] = MatInfo[matID].Mu
         self.Rmu[matID] = MatInfo[matID].Rmu
 
@@ -67,7 +67,7 @@ class DEMMaterial:
     def ParticleLinearRollingInit(self, matID: int, MatInfo: ti.template()):
         print('Contact model: Linear contact Model')
         print('Contact normal stiffness: = ', MatInfo[matID].Kn)
-        print('Contact tangential stiffness: = ', MatInfo[matID].Kt)
+        print('Contact tangential stiffness: = ', MatInfo[matID].Ks)
         print('Friction coefficient = ', MatInfo[matID].Mu)
         print('Local damping coefficient = ', MatInfo[matID].ForceLocalDamping)
         print('Local damping coefficient = ', MatInfo[matID].TorqueLocalDamping)
@@ -83,7 +83,7 @@ class DEMMaterial:
         self.modulus[matID] = MatInfo[matID].Modulus
         self.possion[matID] = MatInfo[matID].possion
         self.kn[matID] = MatInfo[matID].Kn
-        self.kt[matID] = MatInfo[matID].Kt
+        self.ks[matID] = MatInfo[matID].Ks
         self.Mu[matID] = MatInfo[matID].Mu
         self.Rmu[matID] = MatInfo[matID].Rmu
 
@@ -91,7 +91,7 @@ class DEMMaterial:
     def ParticleBondInit(self, matID: int, MatInfo: ti.template()):
         print('Contact model: Linear contact Model')
         print('Contact normal stiffness: = ', MatInfo[matID].Kn)
-        print('Contact tangential stiffness: = ', MatInfo[matID].Kt)
+        print('Contact tangential stiffness: = ', MatInfo[matID].Ks)
         print('Friction coefficient = ', MatInfo[matID].Mu)
         print('Local damping coefficient = ', MatInfo[matID].ForceLocalDamping)
         print('Local damping coefficient = ', MatInfo[matID].TorqueLocalDamping)
@@ -107,7 +107,7 @@ class DEMMaterial:
         self.modulus[matID] = MatInfo[matID].Modulus
         self.possion[matID] = MatInfo[matID].possion
         self.kn[matID] = MatInfo[matID].Kn
-        self.kt[matID] = MatInfo[matID].Kt
+        self.ks[matID] = MatInfo[matID].Ks
         self.Mu[matID] = MatInfo[matID].Mu
         self.Rmu[matID] = MatInfo[matID].Rmu
 
