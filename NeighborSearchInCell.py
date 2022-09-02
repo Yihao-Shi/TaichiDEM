@@ -14,9 +14,17 @@ class NeighborSearchInCell:
                 self.cellSum = self.cnum[0]
 
         self.id = ti.field(int, self.cellSum)                                                                        # ID of grids
-        self.x = ti.Vector.field(3, float, self.cellSum)                                                             # Position
-        self.ParticleInCellNum = ti.field(int, self.cellSum)                                                  
-        self.ParticleNeighbor = ti.field(int, (self.cellSum, max_particle_in_cell))                                          
+        self.x = ti.Vector.field(3, float, self.cellSum)  # Position
+
+        self.list_head = ti.field(int, self.cellSum)
+        self.list_cur = ti.field(int, self.cellSum)
+        self.list_tail = ti.field(int, self.cellSum)
+
+        self.grain_count = ti.field(int, self.cellSum)
+        self.column_sum = ti.field(int, (self.cnum[1] * self.cnum[2]))
+        self.prefix_sum = ti.field(int, self.cellSum) 
+        self.particle_id = ti.field(int, max_particle_num)
+
         self.contactPair = ti.field(int, (int(max_contact_num), 2))
         self.contactPos = ti.Vector.field(3, float, (int(max_contact_num), 2))
         self.contact_pair_num, self.contact_P2W_num = ti.field(int, shape=()), ti.field(int, shape=())
@@ -48,6 +56,10 @@ class NeighborSearchInCell:
     @ti.func
     def GetCellID(self, i, j, k):
         return int(i + j * self.cnum[0] + k * self.cnum[0] * self.cnum[1])
+
+    @ti.func
+    def GetCellIDyz(self, j, k):
+        return int(j + k * self.cnum[1])
     
     # ======================================== DEM Cell Initialization ======================================== #
     @ti.kernel
@@ -65,43 +77,63 @@ class NeighborSearchInCell:
 
     @ti.kernel
     def InitNBSList(self):
-        for i in range(self.cellSum):
+        pass
+        '''for i in range(self.cellSum):
             for j in range(self.ParticleInCellNum[i]):
                 self.ParticleNeighbor[i, j] = -1
         for i in self.ParticleInCellNum:
-            self.ParticleInCellNum[i] = 0
-
-    @ti.func
-    def GetCellID(self, index):
-        return int(index[0] + index[1] * self.cnum[0] + index[2] * self.cnum[0] * self.cnum[1])
+            self.ParticleInCellNum[i] = 0'''
 
     @ti.kernel
-    def InsertParticle(self, partList: ti.template()):
-        for np in range(partList.particleNum[None]):
-            cellID = self.GetCellID(partList.x[np] // self.gridsize)
-            partList.cellID[np] = cellID
-            temp = ti.atomic_add(self.ParticleInCellNum[cellID], 1)
-            self.ParticleNeighbor[cellID, temp] = np
+    def SumParticles(self, partList: ti.template()):
+        for cellID in range(self.cellSum):
+            self.grain_count[cellID] = 0
 
-    @ti.func
-    def UpdateProximityP2P(self, cellID, partList):
-        for first in range(self.ParticleInCellNum[cellID]):
-            master = self.ParticleNeighbor[cellID, first]
-            if self.ParticleInCellNum[cellID] > 1:
-                for npc in range(first + 1, self.ParticleInCellNum[cellID]):
-                    slave = self.ParticleNeighbor[cellID, npc]
-                    pos1, rad1 = partList.x[master], partList.rad[master]
-                    pos2, rad2 = partList.x[slave], partList.rad[slave]
-                    self.FineSearchP2P(master, slave, pos1, pos2, rad1, rad2)
-                
-            for cell in ti.static(range(self.target_cell.shape[0])):
-                currCellID = cellID + self.GetCellID(self.target_cell[cell])
-                if 0 <= currCellID <= self.cellSum:
-                    for npnc in range(self.ParticleInCellNum[currCellID]):
-                        neighSlave = self.ParticleNeighbor[currCellID, npnc]
-                        pos1, rad1 = partList.x[master], partList.rad[master]
-                        pos2, rad2 = partList.x[neighSlave], partList.rad[neighSlave]
-                        self.FineSearchP2P(master, neighSlave, pos1, pos2, rad1, rad2)
+        for np in range(partList.particleNum[None]):
+            cellID = self.GetCellID(partList.x[np][0] // self.gridsize, partList.x[np][1] // self.gridsize, partList.x[np][2] // self.gridsize)
+            self.grain_count[cellID] += 1
+            partList.cellID[np] = cellID
+
+        for celly in range(self.cnum[1]):
+            for cellz in range(self.cnum[2]):
+                ParticleInRow = 0
+                for cellx in range(self.cnum[0]):
+                    cellID = self.GetCellID(cellx, celly, cellz)
+                    ParticleInRow += self.grain_count[cellID]
+                cellIDyz = self.GetCellIDyz(celly, cellz)
+                self.column_sum[cellIDyz] = ParticleInRow
+
+    @ti.kernel
+    def BoardNeighborList(self, partList: ti.template()):
+        ti.loop_config(serialize=True)
+        self.prefix_sum[0] = 0
+        for cellz in range(self.cnum[2]):
+            for celly in range(self.cnum[1]):
+                cellID = self.GetCellID(0, celly, cellz)
+                cellIDyz = self.GetCellIDyz(celly, cellz)
+                if cellID > 0 and cellIDyz > 0:
+                    self.prefix_sum[cellID] = self.prefix_sum[cellID - self.cnum[0]] + self.column_sum[cellIDyz - 1]
+                   
+
+        for cellx in range(self.cnum[0]):
+            for celly in range(self.cnum[1]):
+                for cellz in range(self.cnum[2]): 
+                    cellID = self.GetCellID(cellx, celly, cellz)
+
+                    if cellx == 0:
+                        self.prefix_sum[cellID] += self.grain_count[cellID]
+                    else:
+                        self.prefix_sum[cellID] = self.prefix_sum[cellID - 1] + self.grain_count[cellID]
+
+                    self.list_head[cellID] = self.prefix_sum[cellID] - self.grain_count[cellID]
+                    self.list_cur[cellID] = self.list_head[cellID]
+                    self.list_tail[cellID] = self.prefix_sum[cellID]
+
+        for np in range(partList.particleNum[None]):
+            cellID = partList.cellID[np]
+            grain_location = ti.atomic_add(self.list_cur[cellID], 1)
+            self.particle_id[grain_location] = np
+
 
     @ti.func
     def FineSearchP2P(self, end1, end2, pos1, pos2, rad1, rad2):
@@ -111,6 +143,30 @@ class NeighborSearchInCell:
             self.contactPair[temp, 1] = end2
             self.contactPos[temp, 0] = pos1
             self.contactPos[temp, 1] = pos2
+
+    @ti.kernel
+    def BoardSearch(self, partList: ti.template()):
+        for master in range(partList.particleNum[None]):
+            grid_idx = ti.floor(partList.x[master] / self.gridsize, int)
+
+            x_begin = max(grid_idx[0] - 1, 0)
+            x_end = min(grid_idx[0] + 2, self.cnum[0])
+            y_begin = max(grid_idx[1] - 1, 0)
+            y_end = min(grid_idx[1] + 2, self.cnum[1])
+            z_begin = max(grid_idx[2] - 1, 0)
+            z_end = min(grid_idx[2] + 2, self.cnum[2])
+
+            for neigh_i in range(x_begin, x_end):
+                for neigh_j in range(y_begin, y_end): 
+                    for neigh_k in range(z_begin, z_end): 
+                        cellID = self.GetCellID(neigh_i, neigh_j, neigh_k)
+                        
+                        for p_idx in range(self.list_head[cellID], self.list_tail[cellID]):
+                            slave = self.particle_id[p_idx]
+                            if master < slave: 
+                                pos1, rad1 = partList.x[master], partList.rad[master]
+                                pos2, rad2 = partList.x[slave], partList.rad[slave]
+                                self.FineSearchP2P(master, slave, pos1, pos2, rad1, rad2)
 
     @ti.kernel
     def FindNeighborP2P(self, dem: ti.template()):

@@ -34,11 +34,10 @@ def UpdatePosition(dem: ti.template()):
 def NeighborSearching(dem):
     neighList, contList = dem.ln, dem.lc
     neighList.InitNBSList()
-    #neighList.InitWallList()
-    neighList.InsertParticle(dem.lp)
-    #neighList.InsertWall(dem.lw)
+    neighList.SumParticles(dem.lp)
     neighList.FindNeighborP2W(dem)
-    neighList.FindNeighborP2P(dem)
+    neighList.BoardNeighborList(dem.lp)
+    neighList.BoardSearch(dem.lp)
 
 
 def ContactCal(dem):
