@@ -11,10 +11,20 @@ def Normalize(mv):
 
 @ti.func
 def sign(x):
-    a = -1
     if x >= 0:
-        a = 1
-    return a
+        x = 1
+    else: x = -1
+    return x
+
+@ti.func
+def sgn(x):
+    if x >= 0:
+        x = 1
+    elif x == 0:
+        x = 0
+    elif x <= 0:
+        x = -1
+    return x
 
 
 @ti.func
@@ -91,3 +101,12 @@ def NonNegative(x):
 @ti.func
 def xor(a, b):
     return (a + b) & 1
+
+@ti.func
+def PairingFunction(i, j):
+    return ti.u64(0.5 * (i + j) * (i + j + 1) + j)
+
+
+@ti.func
+def clamp(min_val, max_val, val):
+    return min(max(min_val, val), max_val)
