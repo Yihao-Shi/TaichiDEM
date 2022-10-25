@@ -80,7 +80,7 @@ class LinearContactModel(ContactModel):
         ContactPair.cdnforce[nc] = -2 * ndratio * ti.sqrt(m_eff * kn) * vn
 
     @ti.func
-    def ComputeContactTangentialForce(self, ContactPair, nc, matID1, matID2, m_eff, v_rel, keyLoc):
+    def ComputeContactTangentialForce(self, ContactPair, nc, matID1, matID2, m_eff, v_rel, end1, keyLoc):
         ks = EffectiveValue(self.ks[matID1], self.ks[matID2])
         miu = ti.min(self.Mu[matID1], self.Mu[matID2])
         nsratio = ti.min(self.TangViscousDamping[matID1], self.TangViscousDamping[matID2])
@@ -91,7 +91,7 @@ class LinearContactModel(ContactModel):
         trial_ft = -ks * vs * self.dt 
         
         if keyLoc != -1:
-            TangForceOld = ContactPair.TangForceMap.map[keyLoc]
+            TangForceOld = ContactPair.tangForceOld[end1, keyLoc]
             ft_ori = TangForceOld - TangForceOld.dot(norm) * norm
             ft_temp = TangForceOld.norm() * Normalize(ft_ori)
             trial_ft = trial_ft + ft_temp

@@ -1,72 +1,216 @@
 import taichi as ti
 import time
-import EulerAlgorithm as EulerAlgorithm
-import VerletAlgorithm as VerletAlgorithm
-import Graphic as graphic
-import Spying as spy
+import DEMLib3D.Graphic as graphic
+import DEMLib3D.Spying as spy
 
 
-def Output(t, step, printNum, dem, start, vtkPath, ascPath):
-    print('------------------------ Time Step = ', step, '------------------------')
-    print('Simulation time = ', t)
-    print('Time step = ', dem.Dt[None])
-    print('Physical time = ', time.time() - start)
-    graphic.WriteFileVTK_DEM(dem.lp, printNum, vtkPath)
-    spy.MonitorDEM(t, dem.lp, printNum, ascPath)
-    print('------------------------------- Running --------------------------------')
+@ti.data_oriented
+class TimeIntegrationMPM:
+    def __init__(self, dem, TIME, saveTime, CFL, vtkPath, ascPath, adaptive):
+        self.dem = dem
+        self.TIME = TIME
+        self.saveTime = saveTime
+        self.CFL = CFL
+        self.vtkPath = vtkPath
+        self.ascPath = ascPath
+        self.adaptive = adaptive
+
+    def TurnOnSolver(self, t, step, printNum):
+        self.t = t
+        self.step = step
+        self.printNum = printNum
+
+    def FinalizeSolver(self):
+        self.t = 0.
+        self.step = 0
+        self.printNum = 0
+
+    def UpdateSolver(self, TIME, saveTime, CFL, vtkPath, ascPath, adaptive):
+        self.TIME = TIME
+        self.saveTime = saveTime
+        self.CFL = CFL
+        self.vtkPath = vtkPath
+        self.ascPath = ascPath
+        self.adaptive = adaptive
 
 
-# Solvers
-def Solver(dem, TIME, saveTime, CFL, vtkPath, ascPath, adaptive):
-    if dem.Algorithm == 0:
-        SolverEuler(dem, TIME, saveTime, CFL, vtkPath, ascPath, adaptive)
-    elif dem.Algorithm == 1:
-        SolverVerlet(dem, TIME, saveTime, CFL, vtkPath, ascPath, adaptive)
+    def Output(self, start):
+        print('# Step = ', self.step, '     ', 'Simulation time = ', self.t, '\n')
+        graphic.WriteFileVTK_DEM(self.dem.partList, self.printNum, self.vtkPath)
+        spy.MonitorDEM(self.t, self.dem.partList, self.printNum, self.ascPath)
 
 
 #  --------------------------------------- Euler Algorithm ----------------------------------------- #
-def SolverEuler(dem, TIME, saveTime, CFL, vtkPath, ascPath, adaptive):
-    t, step, printNum = 0., 0, 0
-    st = time.time()
-    while t <= TIME:
-        if t == 0:
-            Output(t, step, printNum, dem, st, vtkPath, ascPath)
-            printNum += 1
-        
-        EulerAlgorithm.UpdatePosition(dem)
-        EulerAlgorithm.NeighborSearching(dem)
-        EulerAlgorithm.ContactCal(dem)
-        EulerAlgorithm.UpdateVelocity(dem)
-        EulerAlgorithm.UpdateAngularVelocity(dem, t)
-        
-        if t % saveTime < dem.Dt[None]:
-            Output(t, step, printNum, dem, st, vtkPath, ascPath)
-            printNum += 1
+@ti.data_oriented
+class SolverEuler(TimeIntegrationMPM):
+    def __init__(self, dem, TIME, saveTime, CFL, vtkPath, ascPath, adaptive):
+        super().__init__(dem, TIME, saveTime, CFL, vtkPath, ascPath, adaptive)
 
-        t += dem.Dt[None]
-        step += 1
+
+    def Solver(self):
+        start = time.time()
+        while self.t <= self.TIME:
+            if self.t == 0:
+                self.Output(start)
+                self.printNum += 1
+                self.dem.neighborList.InitWallList()
+                self.dem.neighborList.SumParticles()
+                self.dem.neighborList.BoardNeighborList()
+                self.dem.neighborList.BoardSearchP2W()
+                self.dem.neighborList.BoardSearchP2P()
+                self.dem.neighborList.FineSearchP2W()
+                self.dem.neighborList.FineSearchP2P()
+                self.dem.Engine.Integration()
+            else:
+                max_disp = self.dem.partList.ComputeMaximumParticleDisp()
+                if max_disp > 0.5 * self.dem.verlet_distance:
+                    self.dem.neighborList.InitWallList()
+                    self.dem.neighborList.SumParticles()
+                    self.dem.neighborList.BoardNeighborList()
+                    self.dem.neighborList.BoardSearchP2W()
+                    self.dem.neighborList.BoardSearchP2P()
+                    self.dem.partList.ResetParicleDisp()
+                self.dem.neighborList.FineSearchP2W()
+                self.dem.neighborList.FineSearchP2P()
+                self.dem.Engine.Integration()
+
+            if self.saveTime - self.t % self.saveTime < self.dem.Dt[None]:
+                self.Output(start)
+                self.printNum += 1
+
+            self.dem.Engine.Reset()
+            self.dem.contPair.Reset()
+
+            self.dem.AddParticlesInRun(self.t)
+
+            self.t += self.dem.Dt[None]
+            self.step += 1
+
+        print('Physical time = ', time.time() - start)
 
 
 #  --------------------------------------- Verlet Algorithm ----------------------------------------- #
-def SolverVerlet(dem, TIME, saveTime, CFL, vtkPath, ascPath, adaptive):
-    t, step, printNum = 0., 0, 0
-    st = time.time()
-    while t <= TIME:
-        if t == 0:
-            Output(t, step, printNum, dem, st, vtkPath, ascPath)
-            printNum += 1
+@ti.data_oriented
+class SolverVerlet(TimeIntegrationMPM):
+    def __init__(self, dem, TIME, saveTime, CFL, vtkPath, ascPath, adaptive):
+        super().__init__(dem, TIME, saveTime, CFL, vtkPath, ascPath, adaptive)
 
-        VerletAlgorithm.UpdateQuaternion(dem)
-        VerletAlgorithm.NeighborSearching(dem)
-        VerletAlgorithm.ContactCal(dem)
-        VerletAlgorithm.UpdateVelocity(dem)
-        VerletAlgorithm.UpdateAngularVelocity(dem)
-        VerletAlgorithm.UpdatePosition(dem)
 
+    def Solver(self):
+        start = time.time()
+        while self.t <= self.TIME:
+            if self.t == 0:
+                self.Output(start)
+                self.printNum += 1
+                self.dem.Engine.IntegrationInit()
+                self.dem.Engine.IntegrationPredictor()
+                self.dem.neighborList.InitWallList()
+                self.dem.neighborList.SumParticles()
+                self.dem.neighborList.BoardNeighborList()
+                self.dem.neighborList.BoardSearchP2W()
+                self.dem.neighborList.BoardSearchP2P()
+                self.dem.neighborList.FineSearchP2W()
+                self.dem.neighborList.FineSearchP2P()
+                self.dem.Engine.IntegrationCorrector()
+                self.dem.Engine.SphereRotation()
+            else:
+                self.dem.Engine.IntegrationPredictor()
+                max_disp = self.dem.partList.ComputeMaximumParticleDisp()
+                if max_disp > 0.5 * self.dem.verlet_distance:
+                    self.dem.neighborList.InitWallList()
+                    self.dem.neighborList.SumParticles()
+                    self.dem.neighborList.BoardNeighborList()
+                    self.dem.neighborList.BoardSearchP2W()
+                    self.dem.neighborList.BoardSearchP2P()
+                    self.dem.partList.ResetParicleDisp()
+                self.dem.neighborList.FineSearchP2W()
+                self.dem.neighborList.FineSearchP2P()
+                self.dem.Engine.IntegrationCorrector()
+                self.dem.Engine.SphereRotation()
+
+            if self.saveTime - self.t % self.saveTime < self.dem.Dt[None]:
+                self.Output(start)
+                self.printNum += 1
+
+            self.dem.Engine.Reset()
+            self.dem.contPair.Reset()
  
-        if t % saveTime < dem.Dt[None]:
-            Output(t, step, printNum, dem, st, vtkPath, ascPath)
-            printNum += 1
+            self.dem.AddParticlesInRun(self.t)
 
-        t += dem.Dt[None]
-        step += 1
+            self.t += self.dem.Dt[None]
+            self.step += 1
+
+        print('Physical time = ', time.time() - start)
+
+
+@ti.data_oriented
+class SolverDEMPM:
+    def __init__(self, dempm, dem):
+        self.dempm = dempm
+        self.dem = dem
+
+    def Flow(self):
+        pass
+
+
+@ti.data_oriented
+class FlowEuler(SolverDEMPM):
+    def __init__(self, dempm, dem):
+        super().__init__(dempm, dem)
+
+    def Time0(self):
+        self.dem.neighborList.InitWallList()
+        self.dem.neighborList.SumParticles()
+        self.dem.neighborList.BoardNeighborList()
+        self.dem.neighborList.BoardSearchP2W()
+        self.dem.neighborList.BoardSearchP2P()
+        self.dem.neighborList.FineSearchP2W()
+        self.dem.neighborList.FineSearchP2P()
+        self.dempm.DEMEngine.Integration()
+
+    def Flow(self):
+        max_disp = self.dem.partList.ComputeMaximumParticleDisp()
+        if max_disp > 0.5 * self.dem.verlet_distance:
+            self.dem.neighborList.InitWallList()
+            self.dem.neighborList.SumParticles()
+            self.dem.neighborList.BoardNeighborList()
+            self.dem.neighborList.BoardSearchP2W()
+            self.dem.neighborList.BoardSearchP2P()
+            self.dem.partList.ResetParicleDisp()
+        self.dem.neighborList.FineSearchP2W()
+        self.dem.neighborList.FineSearchP2P()
+        self.dempm.DEMEngine.Integration()
+        
+
+@ti.data_oriented
+class FlowVerlet(SolverDEMPM):
+    def __init__(self, dempm, dem):
+        super().__init__(dempm, dem)
+
+    def Time0(self):
+        self.dempm.DEMEngine.IntegrationInit()
+        self.dempm.DEMEngine.IntegrationPredictor()
+        self.dem.neighborList.InitWallList()
+        self.dem.neighborList.SumParticles()
+        self.dem.neighborList.BoardNeighborList()
+        self.dem.neighborList.BoardSearchP2W()
+        self.dem.neighborList.BoardSearchP2P()
+        self.dem.neighborList.FineSearchP2W()
+        self.dem.neighborList.FineSearchP2P()
+        self.dempm.DEMEngine.IntegrationCorrector()
+        self.dempm.DEMEngine.SphereRotation()
+
+    def Flow(self):
+        self.dempm.DEMEngine.IntegrationPredictor()
+        max_disp = self.dem.partList.ComputeMaximumParticleDisp()
+        if max_disp > 0.5 * self.dem.verlet_distance:
+            self.dem.neighborList.InitWallList()
+            self.dem.neighborList.SumParticles()
+            self.dem.neighborList.BoardNeighborList()
+            self.dem.neighborList.BoardSearchP2W()
+            self.dem.neighborList.BoardSearchP2P()
+            self.dem.partList.ResetParicleDisp()
+        self.dem.neighborList.FineSearchP2W()
+        self.dem.neighborList.FineSearchP2P()
+        self.dempm.DEMEngine.IntegrationCorrector()
+        self.dempm.DEMEngine.SphereRotation()

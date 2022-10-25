@@ -4,8 +4,6 @@ import numpy as np
 
 
 def WriteFileVTK_DEM(partList, printNum, vtkPath):
-    print('---------------------', 'Writing DEM Graphic files ', printNum, '---------------------')
-
     if printNum == 0:
         if not os.path.exists(vtkPath):
             os.mkdir(vtkPath)
