@@ -1,12 +1,12 @@
 import taichi as ti
-import DEMLib3D.DEMWalls as Wall
-import DEMLib3D.ContactModels as ContactModels
-import DEMLib3D.DEMParticles as Particle
-import DEMLib3D.NeighborSearchSorted as NeighborSearchSorted
-import DEMLib3D.NeighborSearchLinkedCell as NeighborSearchLinkedCell
-import DEMLib3D.ContactPairs as ContactPairs
-import DEMLib3D.DEMEngine as Engine
-import DEMLib3D.TimeIntegrationDEM as TimeIntegrationDEM
+import DEMWalls as Wall
+import ContactModels as ContactModels
+import DEMParticles as Particle
+import NeighborSearchSorted as NeighborSearchSorted
+import NeighborSearchLinkedCell as NeighborSearchLinkedCell
+import ContactPairs as ContactPairs
+import DEMEngine as Engine
+import TimeIntegrationDEM as TimeIntegrationDEM
 
 @ti.data_oriented
 class DEM:
