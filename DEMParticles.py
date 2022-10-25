@@ -1,5 +1,5 @@
 import taichi as ti
-import DEMLib3D.Quaternion as Quaternion
+import Quaternion as Quaternion
 import numpy 
 import math
 
