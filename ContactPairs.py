@@ -1,6 +1,6 @@
 import taichi as ti
-from Common import HashMap
-from Common.Function import *
+import HashMap
+from Function import *
 
 
 @ti.data_oriented
