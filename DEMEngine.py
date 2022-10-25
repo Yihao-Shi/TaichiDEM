@@ -1,6 +1,6 @@
 import taichi as ti
-from Common.Function import *
-import DEMLib3D.Quaternion as Quaternion
+from Function import *
+import Quaternion as Quaternion
 
 
 @ti.data_oriented
