@@ -1,6 +1,6 @@
 import taichi as ti
 import math
-from Common.Function import *
+from Function import *
 
 
 @ti.data_oriented
