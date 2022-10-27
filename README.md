@@ -1,5 +1,6 @@
 # ti-DEM
 A high performance objected-oriented Discrete Element Method (DEM) simulator in [Taichi](https://github.com/taichi-dev/taichi). 
+The coupling scheme named [ti-DEMPM](https://github.com/Yihao-Shi/ti-DEMPM)
 - developed by Shi-Yihao Zhejiang Universiy(In Progress) 
 
 ## Examples
